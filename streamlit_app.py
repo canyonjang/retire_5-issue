@@ -67,17 +67,25 @@ def init_connection() -> Client:
 supabase: Client = init_connection()
 
 
+@st.cache_data(ttl=4, show_spinner=False)
+def _fetch_status(class_name: str):
+    """4초간 캐시. 슬라이더 조작으로 스크립트가 재실행돼도 DB를 다시 때리지 않는다."""
+    return supabase.table("issue_status").select("*").eq("class_name", class_name).execute().data
+
+
 def get_status(class_name: str) -> dict:
-    res = supabase.table("issue_status").select("*").eq("class_name", class_name).execute()
-    if not res.data:
+    data = _fetch_status(class_name)
+    if not data:
         supabase.table("issue_status").insert({"class_name": class_name}).execute()
+        _fetch_status.clear()
         return {"class_name": class_name, "current_issue": 0, "current_phase": "대기",
                 "scenario_seed": 1234, "reveal": False}
-    return res.data[0]
+    return data[0]
 
 
 def set_status(class_name: str, **kwargs):
     supabase.table("issue_status").update(kwargs).eq("class_name", class_name).execute()
+    _fetch_status.clear()
 
 
 def save_response(class_name, name, issue_no, stage, choice=None, score=0.0, payload=None):
@@ -319,23 +327,34 @@ if st.session_state.role == "student":
         st.subheader(f"② 체험 — {info['play']}")
 
         if issue_no == 1:
-            st.write("나의 은퇴 시나리오를 입력하면, **내 돈이 몇 살에 바닥나는지** 계산합니다.")
-            col = st.columns(4)
-            retire_age = col[0].slider("은퇴 나이", 55, 80, 65)
-            save = col[1].slider("월 저축액(만원)", 10, 200, 50, step=10)
-            spend = col[2].slider("은퇴 후 월 생활비(만원)", 100, 400, 200, step=10)
-            rate = col[3].slider("연 수익률(%)", 1.0, 8.0, 5.0, step=0.5)
-            dep_age, _ = simulate_depletion(25, retire_age, save, rate / 100, spend)
-            if dep_age >= 120:
-                st.success("자산이 100세까지 고갈되지 않습니다.")
-            elif dep_age >= 100:
-                st.success(f"자산 고갈 예상: **{dep_age}세** — 100세까지 버팁니다.")
-            else:
-                st.error(f"자산 고갈 예상: **{dep_age}세** — 100세까지 **{100-dep_age}년이 빕니다.**")
-            if st.button("내 결과 제출", type="primary"):
-                save_response(my_class, me, issue_no, "play", score=dep_age,
-                              payload={"retire": retire_age, "save": save, "spend": spend, "rate": rate})
-                st.success("제출 완료!")
+            @st.fragment
+            def sim_fragment():
+                """슬라이더 조작은 이 블록만 재실행된다(전체 스크립트·DB 재조회 없음)."""
+                st.write("나의 은퇴 시나리오를 입력하면, **내 돈이 몇 살에 바닥나는지** 계산합니다.")
+                col = st.columns(4)
+                retire_age = col[0].slider("은퇴 나이", 55, 80, 65)
+                save = col[1].slider("월 저축액(만원)", 10, 200, 50, step=10)
+                spend = col[2].slider("은퇴 후 월 생활비(만원)", 100, 400, 200, step=10)
+                rate = col[3].slider("연 수익률(%)", 1.0, 8.0, 5.0, step=0.5)
+
+                dep_age, _ = simulate_depletion(25, retire_age, save, rate / 100, spend)
+                base_age, _ = simulate_depletion(25, 65, 50, 0.05, 200)  # 기본 시나리오
+
+                if dep_age >= 120:
+                    st.success("자산이 100세까지 고갈되지 않습니다.")
+                elif dep_age >= 100:
+                    st.success(f"자산 고갈 예상: **{dep_age}세** — 100세까지 버팁니다.")
+                else:
+                    st.error(f"자산 고갈 예상: **{dep_age}세** — 100세까지 **{100-dep_age}년이 빕니다.**")
+                st.caption(f"기본 시나리오(65세 은퇴·월 50만원 저축·생활비 200만원)는 {base_age}세 고갈")
+
+                if st.button("내 결과 제출", type="primary"):
+                    save_response(my_class, me, issue_no, "play", score=dep_age,
+                                  payload={"retire": retire_age, "save": save,
+                                           "spend": spend, "rate": rate})
+                    st.success("제출 완료!")
+
+            sim_fragment()
 
         elif issue_no == 2:
             st.write("**지금 100만원**과 **1년 뒤 아래 금액** 중 무엇을 택하시겠습니까?")
