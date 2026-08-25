@@ -150,38 +150,136 @@ def implied_discount_rate(answers):
     return (min(accepted) - 100) / 100 * 100
 
 
-def simulate_first_money(seed, pension, isa, emergency):
-    """이슈3: 1,000만원을 3곳에 배분한 뒤 30년간 인생 이벤트를 겪는다."""
+def median_salary(age: int) -> float:
+    """연령대별 세전 중위 연봉(만원). 고용노동부 임금 통계 기준(2026년 공표 자료).
+    평균값은 고소득자가 끌어올리므로, 체감에 가까운 중위값을 사용한다."""
+    if age < 25:
+        return 2881.0
+    if age < 30:
+        return 3419.0
+    if age < 35:
+        return 4028.0
+    if age < 40:
+        return 4699.0
+    if age < 45:
+        return 5032.0
+    if age < 50:
+        return 5077.0      # 중위 기준 정점
+    if age < 55:
+        return 4766.0
+    if age < 60:
+        return 4182.0
+    return 3211.0
+
+
+def saving_rate(age: int) -> float:
+    """연령대별 저축률(세후소득 대비). 30대 후반~40대 초반은 주거·양육비로 하락."""
+    if age < 30:
+        return 0.25
+    if age < 35:
+        return 0.20
+    if age < 45:
+        return 0.15        # 자녀 교육비·주택자금 부담기
+    if age < 55:
+        return 0.20        # 소득 정점 + 자녀 독립 시작
+    return 0.15
+
+
+def annual_saving(age: int, net_ratio: float = 0.85) -> float:
+    """그 나이에 실제로 저축 가능한 금액(만원). 세후 소득 = 세전 × 0.85 가정."""
+    return median_salary(age) * net_ratio * saving_rate(age)
+
+
+def simulate_first_money(seed, pension, isa, emergency, start_age=25, years=30):
+    """이슈3: 첫 목돈 1,000만원을 3곳에 배분하고, 이후 매년 '그 나이의 저축 가능액'을
+    같은 비율로 계속 적립한다.
+
+    수익률 가정(연): 연금계좌 5.0% / ISA·중기계좌 4.0% / 비상금 2.5%(파킹통장·CMA 수준)
+    세액공제 13.2%(연 900만원 한도)는 이듬해 환급받아 연금계좌에 재투자.
+    비상금은 '6개월치 생활비' 상한을 두고, 넘치는 금액은 ISA로 이동.
+    부족분 충당 순서: 비상금 → ISA → 연금계좌 전액 해지(기타소득세 16.5%) → 신용대출
+    """
     rng = random.Random(seed)
-    logs = []
+    R_PENSION, R_ISA, R_EMER = 0.05, 0.04, 0.025
+    LOAN_RATE, LOAN_YEARS = 0.07, 3      # 신용대출 연 7%, 3년 분할상환 가정
+    PENSION_LIMIT = 900                   # 연금계좌 세액공제 한도(만원)
+    total_seed = max(pension + isa + emergency, 1)
+    w_p, w_i, w_e = pension / total_seed, isa / total_seed, emergency / total_seed
+
     p, i, e = float(pension), float(isa), float(emergency)
-    penalty_total = 0.0
+    p += min(pension, PENSION_LIMIT) * 0.132     # 첫 납입분 세액공제 환급 재투자
+    cost_tax, cost_interest = 0.0, 0.0
+    total_saved = float(total_seed)
+    logs = []
+
     events = [
-        ("이직 공백 3개월", 300), ("대학원 등록금", 500), ("결혼 자금", 800),
-        ("부모님 병원비", 400), ("전세 보증금 인상", 600), ("창업 초기자금", 700),
+        ("이직 공백 3개월", 500), ("대학원 등록금", 1200), ("결혼 자금", 3000),
+        ("부모님 병원비", 1000), ("전세 보증금 인상", 2000), ("창업 초기자금", 2500),
     ]
-    picked = rng.sample(events, 3)
-    for year, (label, need) in zip(sorted(rng.sample(range(3, 25), 3)), picked):
-        # 그 시점까지 수익률 반영
-        p *= (1.05 ** 1); i *= (1.04 ** 1)
-        pay = min(e, need); e -= pay; short = need - pay
-        if short > 0:
-            take = min(i, short); i -= take; short -= take
-        if short > 0:                       # 연금계좌 중도해지 → 기타소득세 16.5%
-            take = min(p, short / (1 - 0.165))
-            p -= take
-            penalty_total += take * 0.165
-            short -= take * (1 - 0.165)
-        if short > 0:                       # 그래도 모자라면 고금리 대출
-            penalty_total += short * 0.20
-            logs.append(f"{year}년차 · {label}({need}만원) → 대출 발생, 이자비용 {short*0.2:,.0f}만원")
-        else:
-            logs.append(f"{year}년차 · {label}({need}만원) → 자체 해결")
-    # 남은 기간 복리
-    p *= (1.05 ** 20) * 1.132              # 세액공제 재투자 효과 근사
-    i *= (1.04 ** 20)
-    total = p + i + e - penalty_total
-    return total, logs
+    picked = dict(zip(sorted(rng.sample(range(3, 21), 3)), rng.sample(events, 3)))
+    pension_alive = True
+
+    for year in range(1, years + 1):
+        age = start_age + year
+        save = annual_saving(age)
+        total_saved += save
+        emer_cap = median_salary(age) * 0.85 * 0.5      # 6개월치 세후소득
+
+        add_p, add_i, add_e = save * w_p, save * w_i, save * w_e
+        if not pension_alive:                            # 해지 후 연금 몫은 ISA로
+            add_i += add_p
+            add_p = 0.0
+
+        p = p * (1 + R_PENSION) + add_p + min(add_p, PENSION_LIMIT) * 0.132
+        e = e * (1 + R_EMER) + add_e
+        if e > emer_cap and (w_p + w_i) > 0:
+            # 비상금 상한 초과분은 원래 배분 비율대로 연금/ISA에 재배분
+            over = e - emer_cap
+            e = emer_cap
+            share_p = w_p / (w_p + w_i) if pension_alive else 0.0
+            if pension_alive:
+                p += over * share_p + min(over * share_p, PENSION_LIMIT) * 0.132
+            add_i += over * (1 - share_p)
+        i = i * (1 + R_ISA) + add_i
+
+        if year not in picked:
+            continue
+        label, need = picked[year]
+        short = float(need)
+
+        used = min(e, short); e -= used; short -= used
+        used_isa = min(i, short); i -= used_isa; short -= used_isa
+
+        broke, tax = 0.0, 0.0
+        if short > 0 and pension_alive and p > 0:
+            # 연금계좌는 부분 인출이 아니라 '전액 해지' — 기타소득세 16.5% 부과
+            tax = p * 0.165
+            cash = p - tax
+            cost_tax += tax
+            p, pension_alive = 0.0, False
+            broke = min(cash, short)
+            short -= broke
+            i += max(cash - broke, 0.0)        # 쓰고 남은 돈은 ISA로 옮김
+
+        loan = interest = 0.0
+        if short > 0:                                  # 남은 부족분은 대출
+            loan = short
+            interest = loan * LOAN_RATE * (LOAN_YEARS + 1) / 2   # 평균잔액 기준 총이자
+            cost_interest += interest
+
+        detail = []
+        if used:
+            detail.append(f"비상금 {used:,.0f}")
+        if used_isa:
+            detail.append(f"ISA {used_isa:,.0f}")
+        if broke:
+            detail.append(f"연금계좌 전액해지(세금 {tax:,.0f}, 이후 세액공제 중단)")
+        if loan:
+            detail.append(f"대출 {loan:,.0f}(이자 {interest:,.0f})")
+        logs.append(f"{age}세({year}년차) · {label} {need:,}만원 → " + " / ".join(detail))
+
+    total = p + i + e - cost_interest
+    return total, logs, {"세금": cost_tax, "이자": cost_interest, "원금": total_saved}
 
 
 def simulate_house_vs_fin(seed, choice, down_payment=20000):
@@ -372,18 +470,40 @@ if st.session_state.role == "student":
                            "(시중금리보다 훨씬 높다면 그것이 현재편향입니다)")
 
         elif issue_no == 3:
-            st.write("첫 목돈 **1,000만원**을 세 곳에 나눠 담으세요. 30년간 인생 이벤트가 발생합니다.")
-            pension = st.slider("연금계좌 (세액공제·과세이연, 55세 잠금)", 0, 1000, 400, step=100)
-            isa = st.slider("ISA·중기계좌 (중간 인출 가능)", 0, 1000 - pension, min(300, 1000 - pension), step=100)
-            emergency = 1000 - pension - isa
-            st.info(f"비상금(수시입출): **{emergency}만원**")
-            if st.button("30년 돌려보기", type="primary"):
-                total, logs = simulate_first_money(seed, pension, isa, emergency)
-                for l in logs:
-                    st.write("· " + l)
-                st.metric("30년 뒤 최종 자산", f"{total:,.0f} 만원")
-                save_response(my_class, me, issue_no, "play", score=total,
-                              payload={"pension": pension, "isa": isa, "emergency": emergency})
+            @st.fragment
+            def money_fragment():
+                st.write("첫 목돈 **1,000만원**의 배분 비율을 정하세요. "
+                         "이 비율은 **이후 매년의 저축에도 그대로 적용**됩니다.")
+                st.caption("매년 저축액은 고용노동부 연령별 중위임금 곡선을 따릅니다 — "
+                           "20대 후반 약 730만원 → 30대 후반 약 600만원(주거·양육기) → "
+                           "40대 후반 약 860만원(정점) → 50대 후반 감소")
+                pension = st.slider("연금계좌 (세액공제·과세이연, 55세 잠금) · 연 5.0%",
+                                    0, 1000, 400, step=100)
+                left = 1000 - pension
+                if left == 0:
+                    isa = 0
+                    st.caption("연금계좌에 전액을 넣어 ISA와 비상금은 0원입니다.")
+                else:
+                    isa = st.slider("ISA·중기계좌 (중간 인출 가능) · 연 4.0%",
+                                    0, left, min(300, left), step=100)
+                emergency = 1000 - pension - isa
+                st.info(f"비상금(파킹통장·CMA 수준, 연 2.5%): **{emergency}만원** "
+                        f"— 6개월치 생활비를 넘는 금액은 나머지 계좌로 자동 이동합니다.")
+
+                if st.button("30년 돌려보기", type="primary"):
+                    total, logs, cost = simulate_first_money(seed, pension, isa, emergency)
+                    for l in logs:
+                        st.write("· " + l)
+                    st.metric("55세 시점 최종 자산", f"{total:,.0f} 만원",
+                              delta=f"{total - cost['원금']:,.0f} 만원 (원금 대비)")
+                    st.caption(f"30년간 넣은 원금 {cost['원금']:,.0f}만원 · "
+                               f"중도해지 세금 {cost['세금']:,.0f}만원 · "
+                               f"대출이자 {cost['이자']:,.0f}만원")
+                    save_response(my_class, me, issue_no, "play", score=total,
+                                  payload={"pension": pension, "isa": isa,
+                                           "emergency": emergency})
+
+            money_fragment()
 
         elif issue_no == 4:
             st.write("30년 뒤를 향해 한 쪽을 고르세요. 시장 시나리오는 **분반 전체가 동일**합니다.")
