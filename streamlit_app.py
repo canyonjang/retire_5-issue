@@ -399,6 +399,8 @@ st.write("---")
 if st.session_state.role == "student":
     me = st.session_state.name
     if st.button("🔄 화면 새로고침", type="primary", use_container_width=True):
+        for k in [f"i3_done_{me}", f"i4_done_{me}"]:   # 제출 여부를 DB에서 다시 확인
+            st.session_state.pop(k, None)
         st.rerun()
     st.write("")
 
@@ -470,52 +472,127 @@ if st.session_state.role == "student":
                            "(시중금리보다 훨씬 높다면 그것이 현재편향입니다)")
 
         elif issue_no == 3:
+            done_key = f"i3_done_{me}"
+            if done_key not in st.session_state:
+                prev = my_response(my_class, me, issue_no, "play")
+                if prev:
+                    pl = json.loads(prev["payload"]) if prev["payload"] else {}
+                    pl["score"] = prev["score"]
+                    st.session_state[done_key] = pl
+                else:
+                    st.session_state[done_key] = None
+
+            def run_and_show(pension, isa, emergency, recorded):
+                total, logs, cost = simulate_first_money(seed, pension, isa, emergency)
+                for l in logs:
+                    st.write("· " + l)
+                st.metric("55세 시점 최종 자산", f"{total:,.0f} 만원",
+                          delta=f"{total - cost['원금']:,.0f} 만원 (원금 대비)")
+                st.caption(f"30년간 넣은 원금 {cost['원금']:,.0f}만원 · "
+                           f"중도해지 세금 {cost['세금']:,.0f}만원 · "
+                           f"대출이자 {cost['이자']:,.0f}만원")
+                if not recorded:
+                    st.caption("※ 이 결과는 기록되지 않습니다.")
+                return total
+
             @st.fragment
             def money_fragment():
-                st.write("첫 목돈 **1,000만원**의 배분 비율을 정하세요. "
-                         "이 비율은 **이후 매년의 저축에도 그대로 적용**됩니다.")
-                st.caption("매년 저축액은 고용노동부 연령별 중위임금 곡선을 따릅니다 — "
-                           "20대 후반 약 730만원 → 30대 후반 약 600만원(주거·양육기) → "
-                           "40대 후반 약 860만원(정점) → 50대 후반 감소")
-                pension = st.slider("연금계좌 (세액공제·과세이연, 55세 잠금) · 연 5.0%",
-                                    0, 1000, 400, step=100)
-                left = 1000 - pension
-                if left == 0:
-                    isa = 0
-                    st.caption("연금계좌에 전액을 넣어 ISA와 비상금은 0원입니다.")
-                else:
-                    isa = st.slider("ISA·중기계좌 (중간 인출 가능) · 연 4.0%",
-                                    0, left, min(300, left), step=100)
-                emergency = 1000 - pension - isa
-                st.info(f"비상금(파킹통장·CMA 수준, 연 2.5%): **{emergency}만원** "
-                        f"— 6개월치 생활비를 넘는 금액은 나머지 계좌로 자동 이동합니다.")
+                done = st.session_state[done_key]
 
-                if st.button("30년 돌려보기", type="primary"):
-                    total, logs, cost = simulate_first_money(seed, pension, isa, emergency)
-                    for l in logs:
-                        st.write("· " + l)
-                    st.metric("55세 시점 최종 자산", f"{total:,.0f} 만원",
-                              delta=f"{total - cost['원금']:,.0f} 만원 (원금 대비)")
-                    st.caption(f"30년간 넣은 원금 {cost['원금']:,.0f}만원 · "
-                               f"중도해지 세금 {cost['세금']:,.0f}만원 · "
-                               f"대출이자 {cost['이자']:,.0f}만원")
-                    save_response(my_class, me, issue_no, "play", score=total,
-                                  payload={"pension": pension, "isa": isa,
-                                           "emergency": emergency})
+                # ---------- 1단계: 아직 확정하지 않음 ----------
+                if not done:
+                    st.error("**이 선택은 한 번뿐입니다.** 버튼을 누르는 순간 결과가 그대로 제출됩니다.")
+                    st.write("첫 목돈 **1,000만원**의 배분 비율을 정하세요. "
+                             "이 비율은 **이후 매년의 저축에도 그대로 적용**됩니다.")
+                    st.caption("매년 저축액은 고용노동부 연령별 중위임금 곡선을 따릅니다 — "
+                               "20대 후반 약 730만원 → 30대 후반 약 600만원(주거·양육기) → "
+                               "40대 후반 약 860만원(정점) → 50대 후반 감소")
+                    pension = st.slider("연금계좌 (세액공제·과세이연, 55세 잠금) · 연 5.0%",
+                                        0, 1000, 400, step=100, key="i3_p")
+                    left = 1000 - pension
+                    if left == 0:
+                        isa = 0
+                        st.caption("연금계좌에 전액을 넣어 ISA와 비상금은 0원입니다.")
+                    else:
+                        isa = st.slider("ISA·중기계좌 (중간 인출 가능) · 연 4.0%",
+                                        0, left, min(300, left), step=100, key="i3_i")
+                    emergency = 1000 - pension - isa
+                    st.info(f"비상금(파킹통장·CMA 수준, 연 2.5%): **{emergency}만원** "
+                            f"— 6개월치 생활비를 넘는 금액은 나머지 계좌로 자동 이동합니다.")
+
+                    if st.button("🔒 이 배분으로 확정하고 30년 살아보기", type="primary",
+                                 use_container_width=True):
+                        total = run_and_show(pension, isa, emergency, recorded=True)
+                        save_response(my_class, me, issue_no, "play", score=total,
+                                      payload={"pension": pension, "isa": isa,
+                                               "emergency": emergency})
+                        st.session_state[done_key] = {"pension": pension, "isa": isa,
+                                                      "emergency": emergency, "score": total}
+                        st.rerun(scope="fragment")
+                    return
+
+                # ---------- 2단계: 확정 후 — 결과 + 샌드박스 ----------
+                st.success(f"제출 완료 — 연금 {done['pension']} / ISA {done['isa']} / "
+                           f"비상금 {done['emergency']} → **{done['score']:,.0f}만원**")
+                st.write("---")
+                st.subheader("🔁 만약 다르게 했다면? (기록되지 않는 연습)")
+                st.caption("이제 마음껏 바꿔보세요. 결과는 교수님 화면에 반영되지 않습니다.")
+                p2 = st.slider("연금계좌", 0, 1000, done["pension"], step=100, key="i3_p2")
+                left2 = 1000 - p2
+                i2 = 0 if left2 == 0 else st.slider(
+                    "ISA·중기계좌", 0, left2, min(done["isa"], left2), step=100, key="i3_i2")
+                e2 = 1000 - p2 - i2
+                st.caption(f"비상금: {e2}만원")
+                if st.button("다시 돌려보기 (기록 안 됨)", key="i3_retry"):
+                    total2 = run_and_show(p2, i2, e2, recorded=False)
+                    diff = total2 - done["score"]
+                    if diff > 0:
+                        st.warning(f"내 제출보다 **{diff:,.0f}만원 더** 모았습니다.")
+                    elif diff < 0:
+                        st.info(f"내 제출보다 {abs(diff):,.0f}만원 적습니다. 내 선택이 나았네요.")
 
             money_fragment()
 
         elif issue_no == 4:
-            st.write("30년 뒤를 향해 한 쪽을 고르세요. 시장 시나리오는 **분반 전체가 동일**합니다.")
-            pick = st.radio("나의 선택", [A, B])
-            if st.button("30년 돌려보기", type="primary"):
-                ch = "A" if pick == A else "B"
-                net, liquid, sc = simulate_house_vs_fin(seed, ch)
-                st.metric("30년 뒤 순자산", f"{net:,.0f} 만원")
-                st.caption(f"유동성(즉시 현금화 가능): {liquid:,.0f} 만원")
-                save_response(my_class, me, issue_no, "play", choice=ch, score=net,
-                              payload=sc)
-                st.info("결과 발표 때 시나리오가 공개됩니다.")
+            done4 = f"i4_done_{me}"
+            if done4 not in st.session_state:
+                prev = my_response(my_class, me, issue_no, "play")
+                st.session_state[done4] = ({"choice": prev["choice"], "score": prev["score"]}
+                                           if prev else None)
+
+            @st.fragment
+            def house_fragment():
+                done = st.session_state[done4]
+                if not done:
+                    st.error("**이 선택은 한 번뿐입니다.** 버튼을 누르는 순간 결과가 그대로 제출됩니다.")
+                    st.write("30년 뒤를 향해 한 쪽을 고르세요. "
+                             "시장 시나리오는 **분반 전체가 동일**하며, 선택 전에는 공개되지 않습니다.")
+                    pick = st.radio("나의 선택", [A, B], key="i4_pick")
+                    if st.button("🔒 이 선택으로 확정하고 30년 살아보기", type="primary",
+                                 use_container_width=True):
+                        ch = "A" if pick == A else "B"
+                        net, liquid, sc = simulate_house_vs_fin(seed, ch)
+                        save_response(my_class, me, issue_no, "play", choice=ch,
+                                      score=net, payload=sc)
+                        st.session_state[done4] = {"choice": ch, "score": net}
+                        st.rerun(scope="fragment")
+                    return
+
+                other = "B" if done["choice"] == "A" else "A"
+                st.success(f"제출 완료 — {A if done['choice']=='A' else B} 선택")
+                st.metric("30년 뒤 순자산", f"{done['score']:,.0f} 만원")
+                if done["choice"] == "A":
+                    st.caption("유동성(즉시 현금화 가능): 0 만원 — 집은 살 수 있지만 쓸 수는 없습니다.")
+                st.write("---")
+                if st.button("🔁 반대쪽을 골랐다면? (기록 안 됨)", key="i4_other"):
+                    net2, liquid2, sc = simulate_house_vs_fin(seed, other)
+                    st.metric(f"{A if other=='A' else B}를 골랐다면",
+                              f"{net2:,.0f} 만원",
+                              delta=f"{net2 - done['score']:,.0f} 만원")
+                    st.caption(f"유동성 {liquid2:,.0f} 만원 · 이 결과는 기록되지 않습니다.")
+                    st.info("시장 시나리오 자체는 교수님 화면에서 함께 공개됩니다.")
+
+            house_fragment()
 
         elif issue_no == 5:
             st.write("아래 두 조언 중 **어느 쪽이 AI의 조언**일까요? 그리고 **어느 쪽을 따르겠습니까?**")
