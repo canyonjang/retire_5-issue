@@ -615,7 +615,34 @@ if st.session_state.role == "student":
     # ---------- 결과 ----------
     elif phase == "결과":
         st.subheader("③ 결과 공개")
-        st.info("교수님 화면(스크린)을 함께 보세요.")
+        mine = my_response(my_class, me, issue_no, "play")
+
+        if issue_no == 3 and mine and mine["payload"]:
+            d = json.loads(mine["payload"])
+            total, logs, cost = simulate_first_money(
+                seed, d.get("pension", 0), d.get("isa", 0), d.get("emergency", 0))
+            st.caption(f"내 배분 — 연금 {d.get('pension')} / ISA {d.get('isa')} / "
+                       f"비상금 {d.get('emergency')}")
+            st.metric("이번 인생 시나리오 기준 최종 자산", f"{round(total):,} 만원",
+                      delta=f"{round(total - cost['원금']):,} 만원 (원금 대비)")
+            for l in logs:
+                st.write("· " + l)
+            st.info("교수님이 시나리오를 다시 뽑으면 새로고침해 보세요. **같은 배분인데 결과가 달라집니다.**")
+
+        elif issue_no == 4 and mine:
+            ch = mine["choice"]
+            net, liquid, sc = simulate_house_vs_fin(seed, ch)
+            st.caption(f"내 선택 — {A if ch == 'A' else B}")
+            st.metric("이번 시나리오 기준 30년 뒤 순자산", f"{round(net):,} 만원")
+            st.caption(f"유동성(즉시 현금화 가능): {round(liquid):,} 만원")
+            st.write(f"이번 시나리오 — 집값 상승률 {sc['집값상승률']*100:.1f}% / "
+                     f"시장수익률 {sc['시장수익률']*100:.1f}% / "
+                     f"전월세 상승률 {sc['전월세상승률']*100:.1f}%")
+            st.info("교수님이 시나리오를 다시 뽑으면 새로고침해 보세요. **같은 선택인데 결과가 달라집니다.**")
+
+        else:
+            st.info("교수님 화면(스크린)을 함께 보세요.")
+
         if issue_no == 5 and reveal:
             st.write("**정답: 모든 문항에서 조언 ①이 AI, 조언 ②가 사람입니다.**")
             st.caption("AI는 평균과 통계로 답하고, 사람은 당신의 상황과 감정을 먼저 묻습니다.")
@@ -731,25 +758,60 @@ else:
                         st.write(f"· *{r['name']}* — {letter}")
 
             elif issue_no == 3:
-                st.write("**30년 뒤 최종 자산 순위(만원)**")
-                rank = play_df.sort_values("score", ascending=False)
-                st.dataframe(pd.DataFrame({
-                    "이름": rank["name"],
-                    "연금계좌": [p.get("pension") for p in rank["payload_d"]],
-                    "ISA": [p.get("isa") for p in rank["payload_d"]],
-                    "비상금": [p.get("emergency") for p in rank["payload_d"]],
-                    "최종자산": rank["score"].round(0).astype(int),
-                }), use_container_width=True)
-                st.info("비상금 0원으로 간 학생과 400만원 이상 둔 학생을 비교해 보여주세요.")
+                # 제출된 '배분'을 현재 시드의 인생 시나리오로 다시 계산한다
+                rows = []
+                for _, r in play_df.iterrows():
+                    d = r["payload_d"]
+                    total, _, cost = simulate_first_money(
+                        seed, d.get("pension", 0), d.get("isa", 0), d.get("emergency", 0))
+                    rows.append({"이름": r["name"], "연금계좌": d.get("pension"),
+                                 "ISA": d.get("isa"), "비상금": d.get("emergency"),
+                                 "최종자산": round(total), "해지세금": round(cost["세금"]),
+                                 "대출이자": round(cost["이자"])})
+                rank = pd.DataFrame(rows).sort_values("최종자산", ascending=False)
+                st.write(f"**이번 인생 시나리오(시드 {seed}) 기준 30년 뒤 자산 순위(만원)**")
+                st.dataframe(rank, use_container_width=True, hide_index=True)
+                st.caption("30년 누적 원금은 약 22,433만원입니다. 원금에 못 미치는 학생이 있는지 보세요.")
+                st.info("비상금 0으로 간 학생과 300만원 이상 둔 학생을 비교해 보여주세요. "
+                        "🎲 재추첨을 누르면 인생 이벤트가 바뀌어 순위가 다시 계산됩니다.")
 
             elif issue_no == 4:
-                _, _, sc = simulate_house_vs_fin(seed, "A")
-                st.write(f"**이번 시나리오** — 집값 상승률 {sc['집값상승률']*100:.1f}% / "
-                         f"시장수익률 {sc['시장수익률']*100:.1f}% / 전월세 상승률 {sc['전월세상승률']*100:.1f}%")
-                grp = play_df.groupby("choice")["score"].agg(["count", "mean"])
-                st.dataframe(grp.rename(columns={"count": "인원", "mean": "평균 순자산(만원)"}),
-                             use_container_width=True)
-                st.caption("재추첨 버튼으로 시나리오를 3~4번 바꿔 돌리면 '운의 영향'이 드러납니다.")
+                netA, liqA, sc = simulate_house_vs_fin(seed, "A")
+                netB, liqB, _ = simulate_house_vs_fin(seed, "B")
+                nA = int((play_df["choice"] == "A").sum())
+                nB = int((play_df["choice"] == "B").sum())
+
+                st.write(f"**이번 시나리오(시드 {seed})** — 집값 상승률 {sc['집값상승률']*100:.1f}% / "
+                         f"시장수익률 {sc['시장수익률']*100:.1f}% / "
+                         f"전월세 상승률 {sc['전월세상승률']*100:.1f}%")
+                st.dataframe(pd.DataFrame({
+                    "선택": [f"A. {A}", f"B. {B}"],
+                    "인원": [nA, nB],
+                    "30년 뒤 순자산(만원)": [round(netA), round(netB)],
+                    "유동성(만원)": [round(liqA), round(liqB)],
+                }), use_container_width=True, hide_index=True)
+                st.success(f"이번 시나리오 승자: **{A if netA > netB else B}** "
+                           f"(차이 {abs(round(netA - netB)):,}만원)")
+
+                # 라운드 기록 — 재추첨할 때마다 쌓여서 '운의 영향'이 드러난다
+                hist = st.session_state.setdefault("i4_hist", [])
+                if not hist or hist[-1]["시드"] != seed:
+                    hist.append({
+                        "라운드": len(hist) + 1, "시드": seed,
+                        "집값%": round(sc["집값상승률"] * 100, 1),
+                        "시장%": round(sc["시장수익률"] * 100, 1),
+                        "전월세%": round(sc["전월세상승률"] * 100, 1),
+                        "A(집)": round(netA), "B(금융)": round(netB),
+                        "승자": "A" if netA > netB else "B",
+                    })
+                if len(hist) > 1:
+                    st.write("**라운드별 결과**")
+                    st.dataframe(pd.DataFrame(hist), use_container_width=True, hide_index=True)
+                    wins = [h["승자"] for h in hist]
+                    st.warning(f"A 승 {wins.count('A')}회 · B 승 {wins.count('B')}회 — "
+                               "**같은 선택인데 결과가 달라집니다. 이것이 '운'입니다.**")
+                else:
+                    st.caption("🎲 재추첨을 3~4회 눌러보세요. 라운드가 쌓이면 비교표가 나타납니다.")
 
             elif issue_no == 5:
                 st.metric("AI 판별 평균 정답 수", f"{play_df['score'].mean():.1f} / 3")
