@@ -285,9 +285,9 @@ def simulate_first_money(seed, pension, isa, emergency, start_age=25, years=30):
 def simulate_house_vs_fin(seed, choice, down_payment=20000):
     """이슈4: 30년 뒤 순자산 비교(만원 단위). choice: 'A'=집, 'B'=금융자산."""
     rng = random.Random(seed)
-    house_growth = rng.uniform(-0.01, 0.05)     # 지역 운
-    market_return = rng.uniform(0.03, 0.09)
-    rent_infl = rng.uniform(0.01, 0.04)
+    house_growth = rng.uniform(0.000, 0.048)    # 지역 운: 정체 ~ 연 4.8%
+    market_return = rng.uniform(0.030, 0.085)   # 글로벌 분산 포트폴리오
+    rent_infl = rng.uniform(0.010, 0.040)       # 전월세 상승률
     if choice == "A":
         value = down_payment * 2.5 * ((1 + house_growth) ** 30)   # 레버리지 포함 주택가치
         debt = down_payment * 1.5 * 0.3                            # 30년 상환 후 잔존부채
