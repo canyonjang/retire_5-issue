@@ -936,7 +936,7 @@ else:
                     st.write("아직 응답이 없습니다.")
 
                 st.write("---")
-                st.subheader("🧭 결과에서 개념으로 (아래 문장을 그대로 말씀하셔도 됩니다)")
+                st.subheader("🧭 결과에서 개념으로")
 
                 c5, c8, c14 = counts.get(5, 0), counts.get(8, 0), counts.get(14, 0)
                 fact_hits = sum(counts[it["no"]] for it in REPORT if it["verdict"] == "사실")
