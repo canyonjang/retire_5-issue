@@ -51,7 +51,7 @@ ISSUES = {
         "title": "은퇴설계, AI에게 맡길 것인가 사람에게 맡길 것인가",
         "A": "AI(로보어드바이저) 중심",
         "B": "사람(전문가 또는 나) 중심",
-        "play": "AI vs 사람 블라인드 테스트",
+        "play": "가정 사냥 — AI 보고서의 숨은 전제 찾기",
     },
 }
 
@@ -301,30 +301,71 @@ def simulate_house_vs_fin(seed, choice, down_payment=20000):
     return net, liquid, {"집값상승률": house_growth, "시장수익률": market_return, "전월세상승률": rent_infl}
 
 
-# 이슈5 블라인드 테스트용 조언 카드 (라벨은 화면에서 숨김)
-ADVICE_CARDS = [
-    {
-        "q": "26세 사회초년생입니다. 월 60만원을 어디에 넣어야 할까요?",
-        "one": ("IRP와 연금저축에 최대한 넣어 세액공제를 먼저 확보하고, 남는 금액은 "
-                "글로벌 지수형 상품으로 자동이체하세요. 55세까지 유지하는 것이 핵심입니다.", "AI"),
-        "two": ("먼저 3개월치 생활비가 통장에 있는지부터 확인하세요. 없다면 그것부터 채우고, "
-                "이직이나 대학원 계획이 있다면 연금계좌 비중은 절반 이하로 두는 게 안전합니다.", "사람"),
-    },
-    {
-        "q": "시장이 20% 떨어졌습니다. 지금 팔아야 할까요?",
-        "one": ("역사적으로 하락 후 회복까지 평균 약 2년이 걸렸습니다. 장기투자자라면 "
-                "매도보다 리밸런싱이 통계적으로 우월한 선택입니다.", "AI"),
-        "two": ("지금 잠이 안 오시나요? 그렇다면 비중이 본인 성향보다 컸다는 뜻입니다. "
-                "전부 팔지 말고, 잠들 수 있는 수준까지만 줄이세요.", "사람"),
-    },
-    {
-        "q": "부모님이 주택연금 가입을 고민 중입니다.",
-        "one": ("72세·4억 주택 기준 월 약 134만원 수령이 가능합니다. 종신지급·비소구 구조이므로 "
-                "현금흐름 관점에서 합리적입니다.", "AI"),
-        "two": ("숫자보다 먼저 가족회의를 하세요. 주택연금은 사실상 그 집을 물려주지 않겠다는 "
-                "결정이고, 갈등의 90%는 그 합의가 없을 때 생깁니다.", "사람"),
-    },
+# ==========================================================
+# 이슈5 : 가정 사냥 — AI 보고서의 숨은 전제 찾기
+# verdict: "가정"=의심하는 것이 맞다 / "사실"=의심하면 틀리다 / "열림"=정답 없음
+# ==========================================================
+REPORT_TITLE = "김민준 님 은퇴설계 보고서 (생성형 AI 작성)"
+
+REPORT = [
+    {"no": 1, "text": "김민준 님은 30세 미혼 직장인으로, 현재 연봉은 4,000만원이며 서울에서 전세로 거주하고 있습니다.",
+     "verdict": "사실",
+     "why": "설계자가 정한 값이 아니라 처음부터 주어진 조건입니다. 의심의 대상이 아닙니다."},
+    {"no": 2, "text": "은퇴 목표 시점은 65세로 설정했습니다.",
+     "verdict": "열림",
+     "why": "통상적 설정으로 넘어갈 수도 있지만, 정년 60세와 국민연금 수급 개시 65세 "
+            "사이의 5년 공백이 설계에서 빠져 있다는 지적도 타당합니다."},
+    {"no": 3, "text": "은퇴 후 필요 생활비는 현재 물가 기준 월 250만원으로 산정했습니다.",
+     "verdict": "가정",
+     "why": "금액의 근거가 없고, 이 안에 의료비·부모 부양·자녀 지원이 포함됐는지 알 수 없습니다. "
+            "참고로 국민연금연구원 조사의 부부 적정 노후생활비는 월 298만원입니다."},
+    {"no": 4, "text": "물가상승률은 연 2%를 적용했습니다.",
+     "verdict": "가정",
+     "why": "35년 평균이 2%라는 전제입니다. 2022년 한국의 소비자물가 상승률은 5%를 넘었습니다."},
+    {"no": 5, "text": "투자 수익률은 연 7%로 가정했습니다.",
+     "verdict": "가정",
+     "why": "가장 눈에 띄는 숫자입니다. 더 큰 문제는 이것이 명목인지 실질인지, "
+            "세전인지 세후인지 적혀 있지 않다는 점입니다. 물가 2%와 중복 적용될 위험이 있습니다."},
+    {"no": 6, "text": "급여는 매년 3%씩 상승하는 것으로 보았습니다.",
+     "verdict": "가정",
+     "why": "35년 내내 오른다는 뜻입니다. 실제 중위임금은 40대 후반에 정점을 찍고 "
+            "이후 하락합니다(45~49세 5,077만원 → 60세 이상 3,211만원)."},
+    {"no": 7, "text": "국민연금은 만 59세까지 의무가입 대상이며, 이후에는 임의계속가입을 선택할 수 있습니다.",
+     "verdict": "사실",
+     "why": "현행 제도와 일치하는 사실 진술입니다. 여기를 짚었다면 내용이 아니라 "
+            "형식(숫자가 있으면 의심)에 반응한 것일 수 있습니다."},
+    {"no": 8, "text": "은퇴 후 국민연금 수령액은 월 108만원으로 가정했습니다.",
+     "verdict": "가정",
+     "why": "108만원은 20년 이상 가입자의 '평균'입니다. 김민준 님이 거기 해당하는지는 "
+            "확인된 바 없습니다. 전체 평균 수령액은 월 67만원입니다. "
+            "평균을 개인에게 그대로 붙인 전형적인 오류입니다."},
+    {"no": 9, "text": "기대수명은 85세를 적용했습니다.",
+     "verdict": "가정",
+     "why": "평균입니다. 절반은 그보다 오래 삽니다. 85세로 계산한 설계는 "
+            "약 50%의 확률로 자금이 부족해집니다."},
+    {"no": 10, "text": "주거는 현재 전세를 그대로 유지하는 것으로 보았습니다.",
+     "verdict": "열림",
+     "why": "30세에게 확정된 주거 계획이 없는 것은 자연스럽습니다. 다만 35년간 "
+            "전세를 유지한다는 것 자체가 강한 가정이라는 지적도 가능합니다."},
+    {"no": 11, "text": "연금저축과 IRP를 합해 연 900만원까지 세액공제를 받을 수 있습니다.",
+     "verdict": "사실",
+     "why": "현행 한도와 일치합니다. 다만 '이 사람의 소득에서 공제율이 몇 %인지'를 "
+            "묻는다면 그것은 타당한 지적입니다."},
+    {"no": 12, "text": "결혼이나 출산에 따른 지출은 이번 설계에 반영하지 않았습니다.",
+     "verdict": "열림",
+     "why": "배제를 정직하게 밝힌 문장입니다. 그러나 밝혔다고 문제가 사라지지는 않습니다. "
+            "30세 미혼의 은퇴설계에서 이것을 빼면 무엇이 남는지 물을 수 있습니다."},
+    {"no": 13, "text": "이상의 조건에서 매월 60만원을 연금계좌에 납입하면 목표 달성이 가능합니다.",
+     "verdict": "열림",
+     "why": "앞의 가정들로부터 나온 계산 결과입니다. 다만 연봉 4,000만원에서 "
+            "월 60만원 저축이 실제로 가능한지는 별개의 질문입니다."},
+    {"no": 14, "text": "위 계획을 실행하면 김민준 님은 안정적인 노후를 보낼 수 있을 것으로 판단됩니다.",
+     "verdict": "가정",
+     "why": "수치가 아니라 '불확실성을 표시하지 않은 단정'이 문제입니다. "
+            "앞의 여섯 개 가정이 모두 맞았을 때만 성립하는 결론인데 조건이 붙어 있지 않습니다."},
 ]
+
+VERDICT_COLOR = {"가정": "🔴", "사실": "🔵", "열림": "🟡"}
 
 
 # ==========================================================
@@ -399,7 +440,7 @@ st.write("---")
 if st.session_state.role == "student":
     me = st.session_state.name
     if st.button("🔄 화면 새로고침", type="primary", use_container_width=True):
-        for k in [f"i3_done_{me}", f"i4_done_{me}"]:   # 제출 여부를 DB에서 다시 확인
+        for k in [f"i3_done_{me}", f"i4_done_{me}", f"i5_done_{me}"]:   # 제출 여부를 DB에서 다시 확인
             st.session_state.pop(k, None)
         st.rerun()
     st.write("")
@@ -595,22 +636,44 @@ if st.session_state.role == "student":
             house_fragment()
 
         elif issue_no == 5:
-            st.write("아래 두 조언 중 **어느 쪽이 AI의 조언**일까요? 그리고 **어느 쪽을 따르겠습니까?**")
-            picks = {}
-            for idx, card in enumerate(ADVICE_CARDS):
-                st.markdown(f"**Q{idx+1}. {card['q']}**")
-                cc = st.columns(2)
-                cc[0].info("**조언 ①**\n\n" + card["one"][0])
-                cc[1].warning("**조언 ②**\n\n" + card["two"][0])
-                picks[f"q{idx+1}_ai"] = st.radio("AI가 쓴 것은?", ["①", "②"],
-                                                 horizontal=True, key=f"ai{idx}")
-                picks[f"q{idx+1}_follow"] = st.radio("내가 따를 조언은?", ["①", "②"],
-                                                     horizontal=True, key=f"fo{idx}")
+            done5 = f"i5_done_{me}"
+            if done5 not in st.session_state:
+                prev = my_response(my_class, me, issue_no, "play")
+                st.session_state[done5] = (json.loads(prev["payload"])
+                                           if prev and prev["payload"] else None)
+
+            @st.fragment
+            def hunt_fragment():
+                done = st.session_state[done5]
+                if done:
+                    st.success(f"제출 완료 — {len(done.get('picked', []))}개 문장을 지목했습니다.")
+                    st.caption("교수님 화면에서 반 전체 결과가 공개됩니다. 잠시 기다려 주세요.")
+                    return
+
+                st.write("아래는 **생성형 AI가 작성한 은퇴설계 보고서**입니다. "
+                         "각 문장을 읽고 **검증되지 않은 가정이라고 생각되는 문장**을 모두 고르세요.")
+                st.caption("정답 개수는 정해져 있지 않습니다. 많이 고르는 것이 목표가 아닙니다.")
+                st.markdown(f"##### 📄 {REPORT_TITLE}")
+
+                picked = []
+                for item in REPORT:
+                    if st.checkbox(f"**{item['no']}.** {item['text']}", key=f"i5_s{item['no']}"):
+                        picked.append(item["no"])
+
                 st.write("---")
-            if st.button("제출", type="primary"):
-                correct = sum(1 for i in range(len(ADVICE_CARDS)) if picks[f"q{i+1}_ai"] == "①")
-                save_response(my_class, me, issue_no, "play", score=correct, payload=picks)
-                st.success("제출 완료! 정답은 교수님 화면에서 함께 공개됩니다.")
+                missing = st.text_input(
+                    "이 보고서에 **아예 빠져 있는** 항목이 있다면 무엇입니까? (한 가지만)",
+                    key="i5_missing")
+
+                st.error("**제출은 한 번뿐입니다.** 버튼을 누르면 결과가 그대로 기록됩니다.")
+                if st.button("🔒 제출하기", type="primary", use_container_width=True):
+                    payload = {"picked": picked, "missing": missing.strip()}
+                    save_response(my_class, me, issue_no, "play",
+                                  score=len(picked), payload=payload)
+                    st.session_state[done5] = payload
+                    st.rerun(scope="fragment")
+
+            hunt_fragment()
 
     # ---------- 결과 ----------
     elif phase == "결과":
@@ -644,8 +707,16 @@ if st.session_state.role == "student":
             st.info("교수님 화면(스크린)을 함께 보세요.")
 
         if issue_no == 5 and reveal:
-            st.write("**정답: 모든 문항에서 조언 ①이 AI, 조언 ②가 사람입니다.**")
-            st.caption("AI는 평균과 통계로 답하고, 사람은 당신의 상황과 감정을 먼저 묻습니다.")
+            st.write("---")
+            st.subheader("📄 문장별 해설")
+            st.caption("🔴 의심하는 것이 맞다 · 🔵 의심하면 틀리다(사실 진술) · 🟡 정답 없음(토론 대상)")
+            picked = set((mine and mine["payload"] and
+                          json.loads(mine["payload"]).get("picked")) or [])
+            for item in REPORT:
+                mark = "✔︎ 내가 지목" if item["no"] in picked else ""
+                st.markdown(f"{VERDICT_COLOR[item['verdict']]} **{item['no']}.** "
+                            f"{item['text']}　{mark}")
+                st.caption(item["why"])
 
     # ---------- 사후투표 ----------
     elif phase == "사후투표":
@@ -814,17 +885,109 @@ else:
                     st.caption("🎲 재추첨을 3~4회 눌러보세요. 라운드가 쌓이면 비교표가 나타납니다.")
 
             elif issue_no == 5:
-                st.metric("AI 판별 평균 정답 수", f"{play_df['score'].mean():.1f} / 3")
-                if st.button("🎉 정답 공개 (학생 화면에 표시)", type="primary"):
-                    set_status(my_class, reveal=True)
-                    st.rerun()
-                follows = []
-                for p in play_df["payload_d"]:
-                    follows += [v for k, v in p.items() if k.endswith("follow")]
-                if follows:
-                    ai_follow = follows.count("①")
-                    st.write(f"**따르겠다고 선택한 조언:** AI(①) {ai_follow}회 / "
-                             f"사람(②) {len(follows)-ai_follow}회")
+                n = len(play_df)
+                picks = [json.loads(x) if x else {} for x in play_df["payload"]]
+                counts = {it["no"]: 0 for it in REPORT}
+                for pk in picks:
+                    for no in pk.get("picked", []):
+                        counts[no] = counts.get(no, 0) + 1
+
+                avg = sum(len(pk.get("picked", [])) for pk in picks) / max(n, 1)
+                c1, c2, c3 = st.columns(3)
+                c1.metric("참여 인원", f"{n} 명")
+                c2.metric("1인당 평균 지목", f"{avg:.1f} / {len(REPORT)}")
+                zero = [no for no, c in counts.items() if c == 0]
+                c3.metric("아무도 안 짚은 문장", f"{len(zero)} 개")
+
+                st.write("---")
+                st.subheader("📄 문장별 지목률 (보고서 순서)")
+                st.caption("🔴 의심하는 것이 맞다 · 🔵 의심하면 틀리다 · 🟡 정답 없음")
+                for it in REPORT:
+                    c = counts[it["no"]]
+                    pct = c / n * 100 if n else 0
+                    bar = "█" * int(round(pct / 5))
+                    st.markdown(f"{VERDICT_COLOR[it['verdict']]} **{it['no']}.** "
+                                f"{it['text'][:42]}…　`{bar}` **{c}명 ({pct:.0f}%)**")
+
+                st.write("---")
+                st.subheader("🔍 오늘의 이야깃거리")
+                # (1) 놓친 가정 = verdict 가정인데 지목률 낮은 순
+                missed = sorted([it for it in REPORT if it["verdict"] == "가정"],
+                                key=lambda it: counts[it["no"]])[:2]
+                for it in missed:
+                    st.error(f"**놓친 가정 · {it['no']}번** ({counts[it['no']]}명, "
+                             f"{counts[it['no']]/max(n,1)*100:.0f}%) — {it['text']}")
+                    st.caption(it["why"])
+                # (2) 헛짚은 문장 = verdict 사실인데 지목률 높은 순
+                false_hits = sorted([it for it in REPORT if it["verdict"] == "사실"],
+                                    key=lambda it: -counts[it["no"]])[:1]
+                for it in false_hits:
+                    st.info(f"**사실인데 의심한 문장 · {it['no']}번** ({counts[it['no']]}명) — {it['text']}")
+                    st.caption(it["why"])
+
+                st.write("---")
+                st.subheader("💬 보고서에 아예 빠져 있는 것")
+                miss_txt = [pk.get("missing", "").strip() for pk in picks]
+                miss_txt = [m for m in miss_txt if m]
+                if miss_txt:
+                    st.write("　".join(f"「{m}」" for m in miss_txt))
+                    st.caption(f"{len(miss_txt)}명 응답 · 무응답 {n - len(miss_txt)}명")
+                else:
+                    st.write("아직 응답이 없습니다.")
+
+                st.write("---")
+                st.subheader("🧭 결과에서 개념으로 (아래 문장을 그대로 말씀하셔도 됩니다)")
+
+                c5, c8, c14 = counts.get(5, 0), counts.get(8, 0), counts.get(14, 0)
+                fact_hits = sum(counts[it["no"]] for it in REPORT if it["verdict"] == "사실")
+
+                # 알고리즘 불투명성
+                if c5 > c8:
+                    st.warning(
+                        f"**알고리즘 불투명성** — 수익률 7%는 {c5}명이 짚었는데 "
+                        f"국민연금 108만원은 {c8}명만 짚었습니다. 둘 다 검증되지 않은 값인데 "
+                        "반응이 갈렸습니다. 눈에 띄는 숫자만 의심하고 나머지는 통과시킨 것입니다. "
+                        "AI가 어떤 값을 어디서 가져왔는지 설명하지 않으면, 우리는 "
+                        "'검증할 수 있는 것'이 아니라 '눈에 띄는 것'만 검증하게 됩니다.")
+                else:
+                    st.warning(
+                        "**알고리즘 불투명성** — 여러분은 숫자를 짚었지만, 그 숫자가 "
+                        "어디서 왔는지는 보고서 어디에도 없습니다. 근거를 밝히지 않는 산출물은 "
+                        "검증 대상이 아니라 신뢰 대상이 되어버립니다.")
+
+                # 휴먼 인 더 루프
+                if c14 < n * 0.3:
+                    st.warning(
+                        f"**휴먼 인 더 루프** — 마지막 결론 문장(14번)을 짚은 사람은 {c14}명뿐입니다. "
+                        "가정은 의심했지만 결론은 믿었다는 뜻입니다. 그런데 그 결론은 "
+                        "여러분이 의심한 바로 그 가정들 위에 서 있습니다. "
+                        "사람이 개입해야 할 마지막 지점은 계산이 아니라 판단입니다.")
+                else:
+                    st.warning(
+                        f"**휴먼 인 더 루프** — 결론 문장을 {c14}명이 짚었습니다. "
+                        "가정과 결론을 함께 의심한 것은 좋은 신호입니다. "
+                        "판단의 최종 책임은 사람에게 남습니다.")
+
+                # 주인-대리인 문제
+                st.warning(
+                    "**주인-대리인 문제** — 이 보고서를 만든 쪽은 '설득력 있어 보이는 문서'를 "
+                    "만들면 임무를 다한 것입니다. 하지만 그 결과를 30년간 감당하는 사람은 "
+                    "김민준 님입니다. 만드는 쪽과 책임지는 쪽이 다를 때, 검증은 "
+                    "받는 사람의 몫이 됩니다.")
+
+                if fact_hits > 0:
+                    st.warning(
+                        f"**검증의 방향** — 사실 진술 문장(1·7·11번)에도 총 {fact_hits}번의 "
+                        "지목이 있었습니다. 숫자가 보이면 반사적으로 의심한 것입니다. "
+                        "검증은 의심의 '양'이 아니라 '방향'입니다.")
+
+                st.write("---")
+                if not reveal:
+                    if st.button("📖 문장별 해설 공개 (학생 화면에 표시)", type="primary"):
+                        set_status(my_class, reveal=True)
+                        st.rerun()
+                else:
+                    st.success("학생 화면에 문장별 해설이 공개되었습니다.")
 
         st.write("---")
         with st.expander("⚠️ 데이터 관리"):
